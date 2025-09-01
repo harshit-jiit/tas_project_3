@@ -102,8 +102,8 @@ def cleanup_temp_files():
             '/tmp/pymp-*',
             '/workspace/2404170001/tmp/torch_*',
             '/workspace/2404170001/tmp/pymp-*',
-            '/dev/shm/torch_*',
-            '/dev/shm/sem.*'
+            # '/dev/shm/torch_*',
+            # '/dev/shm/sem.*'
 
         ]
         
