@@ -41,7 +41,6 @@ def move_to_device(
 from matchmaker.utils.core_metrics import *
 
 from matchmaker.utils.cross_experiment_cache import *
-# from matchmaker.utils.input_pipeline import *
 from matchmaker.utils.performance_monitor import *
 from modernized_loader.independent_reranking_loader import pytorch_reranking_inference_loader
 import time
