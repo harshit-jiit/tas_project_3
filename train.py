@@ -1,3 +1,4 @@
+
 #
 # train a neural-ir model
 # -------------------------------
@@ -11,21 +12,22 @@ import sys,traceback
 import os
 import tempfile
 import shutil
-import torch.multiprocessing as mp
+# REMOVED: import torch.multiprocessing as mp
 import tempfile
 import os
 import torch
+
+# REMOVED ALL MULTIPROCESSING SETUP:
 # Force PyTorch to use file system instead of shared memory
-mp.set_sharing_strategy("file_system")
-torch.multiprocessing.set_sharing_strategy('file_system')
+# mp.set_sharing_strategy("file_system")
+# torch.multiprocessing.set_sharing_strategy('file_system')
 
-# Set custom temp directory for multiprocessing
-os.environ['TMPDIR'] = '/workspace/2404170001/tmp'
-os.environ['TEMP'] = '/workspace/2404170001/tmp'  
-os.environ['TMP'] = '/workspace/2404170001/tmp'
-os.makedirs('/workspace/2404170001/tmp', exist_ok=True)
-tempfile.tempdir = '/workspace/2404170001/tmp'
-
+# REMOVED: Set custom temp directory for multiprocessing
+# os.environ['TMPDIR'] = '/workspace/2404170001/tmp'
+# os.environ['TEMP'] = '/workspace/2404170001/tmp'  
+# os.environ['TMP'] = '/workspace/2404170001/tmp'
+# os.makedirs('/workspace/2404170001/tmp', exist_ok=True)
+# tempfile.tempdir = '/workspace/2404170001/tmp'
 
 # Set PyTorch multiprocessing to use file system instead of shared memory
 
@@ -514,6 +516,7 @@ if __name__ == "__main__":
         global_i = 0
         if from_scratch:
             for epoch in range(0, int(config["epochs"])):
+                # import pdb; pdb.set_trace()
                 if early_stopper.stop:
                     break
                 perf_monitor.start_block("train")
@@ -677,8 +680,9 @@ if __name__ == "__main__":
                                 mrr_avg += mrr.detach().mean()
                                 output_pos = torch.repeat_interleave(output_pos,output_neg.shape[0] // output_pos.shape[0],dim=0)
 
-                            ranking_score_pos = output_pos
-                            ranking_score_neg = output_neg
+                            ranking_score_pos = output_pos.detach()
+                            ranking_score_neg = output_neg.detach()
+
 
                             #
                             # loss & stats computation
@@ -1048,7 +1052,7 @@ if __name__ == "__main__":
                 best_metric, _, validated_count,_ = validate_model(validation_end_name,model, config,validation_end_config,
                                                                  run_folder, logger, cuda_device, 
                                                                  candidate_set=validation_end_candidate_set,
-                                                                 output_secondary_output=validation_end_config["save_secondary_output"],is_distributed=is_distributed)
+                                                                 output_secondary_output=validation_end_config["output_secondary_output"],is_distributed=is_distributed)
                 save_best_info(os.path.join(run_folder, "val-"+validation_end_name+"-info.csv"),best_metric)
                 best_validation_end_metrics[validation_end_name] = best_metric
 

@@ -2,7 +2,7 @@ from rich.console import Console
 import random
 import numpy as np
 import torch
-import torch.multiprocessing as mp
+# import torch.multiprocessing as mp
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer
 import traceback
@@ -45,13 +45,13 @@ class TensorDict(Dict[str, torch.Tensor]):
     """
     pass
 
-class WorkerError(Exception):
-    """
-    Custom exception for worker process errors
-    """
-    def __init__(self, message, traceback_str):
-        super().__init__(message)
-        self.traceback_str = traceback_str
+# class WorkerError(Exception):
+#     """
+#     Custom exception for worker process errors
+#     """
+#     def __init__(self, message, traceback_str):
+#         super().__init__(message)
+#         self.traceback_str = traceback_str
 
 class TASBalancedDatasetLoader:
     """
@@ -107,30 +107,30 @@ class TASBalancedDatasetLoader:
         self.query_clusters = []
         self.query_ids = set()
 
-    def __iter__(self) -> Iterator[TensorDict]:
-        """
-        Create an iterator that yields batches of training data
-        """
-        ctx = mp.get_context("fork" if "fork" in mp.get_all_start_methods() else "spawn")
-        queue: mp.JoinableQueue = ctx.JoinableQueue(2000)
-        worker = ctx.Process(
-            target=self.data_loader_subprocess, args=(queue,), daemon=True
-        )
-        worker.start()
+    # def __iter__(self) -> Iterator[TensorDict]:
+    #     """
+    #     Create an iterator that yields batches of training data
+    #     """
+    #     ctx = mp.get_context("fork" if "fork" in mp.get_all_start_methods() else "spawn")
+    #     queue: mp.JoinableQueue = ctx.JoinableQueue(2000)
+    #     worker = ctx.Process(
+    #         target=self.data_loader_subprocess, args=(queue,), daemon=True
+    #     )
+    #     worker.start()
 
-        try:
-            for batch, worker_error in iter(queue.get, (None, None)):
-                if worker_error is not None:
-                    e, tb = worker_error
-                    raise WorkerError(e, tb)
+    #     try:
+    #         for batch, worker_error in iter(queue.get, (None, None)):
+    #             if worker_error is not None:
+    #                 e, tb = worker_error
+    #                 raise WorkerError(e, tb)
 
-                yield batch
-                queue.task_done()
-        finally:
-            if hasattr(queue, "close"):
-                queue.close()
-            if worker.is_alive():
-                worker.terminate()
+    #             yield batch
+    #             queue.task_done()
+    #     finally:
+    #         if hasattr(queue, "close"):
+    #             queue.close()
+    #         if worker.is_alive():
+    #             worker.terminate()
 
     def load_data(self):
         """
@@ -243,7 +243,7 @@ class TASBalancedDatasetLoader:
         
         self.pairs_with_teacher_scores_by_qid = pairs_with_teacher_scores_by_qid_binned
 
-    def data_loader_subprocess(self, queue):
+    def __iter__ (self):
         """
         Subprocess that generates batches and puts them in the queue
         """
@@ -309,13 +309,15 @@ class TASBalancedDatasetLoader:
 
                 # Create batch by collating samples
                 batch = self._collate_samples(batch_samples)
-                queue.put((batch, None))
+                # queue.put((batch, None))
+                yield batch
 
         except Exception as e:
-            queue.put((None, (repr(e), traceback.format_exc())))
+            print("[TASBalanced] Error occurred:", repr(e), traceback.format_exc())
+            # queue.put((None, (repr(e), traceback.format_exc())))
         
-        queue.put((None, None))
-        queue.join()
+            yield None
+        # queue.join()
 
     def _select_pair(self, query_id: str) -> Optional[Tuple[str, str, float, float]]:
         """
