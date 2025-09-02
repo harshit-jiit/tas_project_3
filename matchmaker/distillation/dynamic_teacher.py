@@ -4,7 +4,7 @@ import copy
 
 import torch
 import torch.nn as nn
-# import torch.multiprocessing as mp
+import torch.multiprocessing as mp
 import traceback
 from typing import Any, Dict, List, Optional, Union, Tuple
 
@@ -42,7 +42,7 @@ from matchmaker.models.all import get_model, get_word_embedder
 # from transformers.utils import cached_file
 # from transformers.utils.hub import hf_bucket_url
 # from transformers import WEIGHTS_NAME
-# mp.set_sharing_strategy("file_system") # VERY MUCH needed for linux !! makes everything MUCH faster
+mp.set_sharing_strategy("file_system") # VERY MUCH needed for linux !! makes everything MUCH faster
 
 from torch.nn.parallel.scatter_gather import scatter_kwargs, gather
 from torch.nn.parallel.replicate import replicate
@@ -161,33 +161,33 @@ class DynamicTeacher():
         self.cuda_device = torch.cuda.device_count() - 1 # [torch.cuda.device_count() - 2,torch.cuda.device_count() - 1] # take the last gpu 
         self.logger = logger
 
-    # def __iter__(self):
-    #     mp.set_sharing_strategy("file_system")
-
-    #     ctx = mp.get_context("spawn") # need spawn here, otherwise CUDA fails 
-
-    #     queue: mp.JoinableQueue = ctx.JoinableQueue()
-    #     worker = ctx.Process(
-    #         target=self.dynamic_teacher_subprocess, args=(queue,), #daemon=True
-    #     )
-    #     worker.start()
-
-    #     try:
-    #         for batch, worker_error in iter(queue.get, (None, None)):
-    #             if worker_error is not None:
-    #                 e, tb = worker_error
-    #                 raise WorkerError(e, tb)
-
-    #             yield batch
-    #             queue.task_done()
-    #     finally:
-    #         if hasattr(queue, "close"):  # for compat with different Python versions.
-    #             queue.close()  # type: ignore[attr-defined]
-    #         if worker.is_alive():
-    #             worker.terminate()
-
-
     def __iter__(self):
+        mp.set_sharing_strategy("file_system")
+
+        ctx = mp.get_context("spawn") # need spawn here, otherwise CUDA fails 
+
+        queue: mp.JoinableQueue = ctx.JoinableQueue()
+        worker = ctx.Process(
+            target=self.dynamic_teacher_subprocess, args=(queue,), #daemon=True
+        )
+        worker.start()
+
+        try:
+            for batch, worker_error in iter(queue.get, (None, None)):
+                if worker_error is not None:
+                    e, tb = worker_error
+                    raise WorkerError(e, tb)
+
+                yield batch
+                queue.task_done()
+        finally:
+            if hasattr(queue, "close"):  # for compat with different Python versions.
+                queue.close()  # type: ignore[attr-defined]
+            if worker.is_alive():
+                worker.terminate()
+
+
+    def dynamic_teacher_subprocess(self, queue):
         
         try:
             console = Console()
@@ -312,20 +312,18 @@ class DynamicTeacher():
                             ib_output_pos = model.forward_inbatch_aggregation(query_vecs_pos,batch["query_tokens"]["attention_mask"], doc_vecs_pos, batch["doc_pos_tokens"]["attention_mask"])
                             ib_output_neg = model.forward_inbatch_aggregation(query_vecs_neg,batch["query_tokens"]["attention_mask"], doc_vecs_neg, batch["doc_neg_tokens"]["attention_mask"])
 
-                            orig_batch["dyn_teacher_scores_pos"] = ib_output_pos.cpu().detach()
-                            orig_batch["dyn_teacher_scores_neg"] = ib_output_neg.cpu().detach()
+                            orig_batch["dyn_teacher_scores_pos"] = ib_output_pos.cpu()
+                            orig_batch["dyn_teacher_scores_neg"] = ib_output_neg.cpu()
 
                         else:
-                            orig_batch["dyn_teacher_scores_pos"] = output_pos.cpu().detach()
-                            orig_batch["dyn_teacher_scores_neg"] = output_neg.cpu().detach()
+                            orig_batch["dyn_teacher_scores_pos"] = output_pos.cpu()
+                            orig_batch["dyn_teacher_scores_neg"] = output_neg.cpu()
 
-                    # queue.put((orig_batch,None))  # this moves the tensors in to shared memory
-                    yield orig_batch
+                    queue.put((orig_batch,None))  # this moves the tensors in to shared memory
 
         except Exception as e:
-            # queue.put((None, (repr(e), traceback.format_exc())))
-            yield (None, (repr(e), traceback.format_exc()))
-
-        # queue.put((None, None))
-        # # Wait until this process can safely exit.
-        # queue.join()
+            queue.put((None, (repr(e), traceback.format_exc())))
+        
+        queue.put((None, None))
+        # Wait until this process can safely exit.
+        queue.join()

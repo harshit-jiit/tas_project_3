@@ -56,7 +56,7 @@ from matchmaker.distillation.dynamic_teacher import DynamicTeacher
 from matchmaker.utils.running_average import RunningAverage
 
 from matchmaker.models.all import get_model, get_word_embedder
-from matchmaker.losses.all import get_loss,merge_loss
+from matchmaker.losses.all import get_loss
 
 from matchmaker.utils.cross_experiment_cache import *
 # from matchmaker.utils.input_pipeline import *
@@ -206,9 +206,9 @@ if __name__ == "__main__":
             "validation_metric": "nDCG@10",
             "tsv": os.path.join(base_path,"validation_test_split/validation.tsv"),
             "qrels": os.path.join(base_path,"validation_test_split/qrels_validation.tsv"),
-            "candidate_set_path": os.path.join(base_path,"validation_test_split/bm25_validation.txt"),
-            "candidate_set_from_to": [100, 100],
-            "binarization_point": 2,
+            # "candidate_set_path": None, #os.path.join(base_path,"validation_test_split/bm25_validation.txt"),
+            "candidate_set_from_to": None, #[100, 100],
+            "binarization_point": 1,
             "save_only_best": True
         },
         "validation_end":{
@@ -216,9 +216,9 @@ if __name__ == "__main__":
                 "validation_metric": "nDCG@10",
                 "tsv": os.path.join(base_path,"validation_test_split/validation.tsv"),
                 "qrels": os.path.join(base_path,"validation_test_split/qrels_validation.tsv"),
-                "candidate_set_path": os.path.join(base_path,"validation_test_split/bm25_validation.txt"),
-                "candidate_set_from_to": [100, 100],
-                "binarization_point": 2,
+                # "candidate_set_path": None, #os.path.join(base_path,"validation_test_split/bm25_validation.txt"),
+                "candidate_set_from_to": None, #[100, 100],
+                "binarization_point": 1,
                 "save_only_best": True
             }
         },
@@ -227,10 +227,10 @@ if __name__ == "__main__":
                 "validation_metric": "nDCG@10",
                 "tsv": os.path.join(base_path,"validation_test_split/test.tsv"),
                 "qrels": os.path.join(base_path,"validation_test_split/qrels_test.tsv"),
-                "candidate_set_path": os.path.join(base_path,"validation_test_split/bm25_test.txt"),
+                # "candidate_set_path": None, #os.path.join(base_path,"validation_test_split/bm25_test.txt"),
                 
-                "candidate_set_from_to": [100, 100],
-                "binarization_point": 2,
+                "candidate_set_from_to":None, #[100, 100],
+                "binarization_point": 1,
                 "save_only_best": True
             }
         },
