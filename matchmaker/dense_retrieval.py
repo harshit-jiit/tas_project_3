@@ -27,25 +27,51 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # needed because of the scann library
 from transformers import logging
 logging.set_verbosity_warning()
-
+import onnxruntime
+from matchmaker.utils.onnx_helper import *
 import torch
 import numpy
 import random
+from collections import defaultdict
+from typing import Union, Dict, List, Any
 
-from allennlp.nn.util import move_to_device
+def move_to_device(
+    obj: Union[torch.Tensor, Dict, List, Any], 
+    device: Union[torch.device, int, str]
+) -> Union[torch.Tensor, Dict, List, Any]:
+    """
+    Recursively move tensors in nested data structures to specified device
+    
+    Args:
+        obj: Object containing tensors (can be nested dict/list/tuple)
+        device: Target device
+        
+    Returns:
+        Object with tensors moved to device
+    """
+    if isinstance(obj, torch.Tensor):
+        return obj.to(device)
+    elif isinstance(obj, dict):
+        return {key: move_to_device(value, device) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        moved_items = [move_to_device(item, device) for item in obj]
+        return type(obj)(moved_items)
+    else:
+        return obj
+    
 
-from matchmaker.models.all import get_model, get_word_embedder, build_model
+from matchmaker.models.all import get_model, get_word_embedder
 from matchmaker.modules.indexing_heads import *
 
 from matchmaker.utils.utils import *
 from matchmaker.utils.config import *
-from matchmaker.utils.input_pipeline import allennlp_single_sequence_loader
+from modernized_loader.transformer_tokenizer import FastTransformerTokenizer
 from matchmaker.utils.performance_monitor import * 
 
 from matchmaker.eval import *
 from matchmaker.utils.core_metrics import *
 from matchmaker.retrieval.faiss_indices import *
-
+from torch.utils.data import Dataset, DataLoader
 from rich.console import Console
 from rich.live import Live
 console = Console()
@@ -54,33 +80,147 @@ MODE_ALL = "encode+index+search"
 MODE_START_INDEX = "index+search"
 MODE_START_SEARCH = "search"
 
+class IdSequenceDataset(Dataset):
+    """
+    PyTorch Dataset for loading sequences from a TSV file: id<tab>text
+    """
+    def __init__(self, data_path, tokenizer, max_seq_length=-1, min_seq_length=-1, sequence_type="doc"):
+        super().__init__()
+        self.tokenizer = tokenizer
+        self.max_seq_length = max_seq_length
+        self.min_seq_length = min_seq_length
+        self.sequence_type = sequence_type
+        self.data = self._load_data(data_path)
+
+    def _load_data(self, data_path):
+        data = []
+        with open(data_path, "r", encoding="utf8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split("\t")
+                if len(parts) != 2:
+                    raise ValueError(f"Invalid line format: {line}")
+                seq_id, seq_text = parts
+                data.append((seq_id, seq_text))
+        return data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        seq_id, seq_text = self.data[idx]
+        tokenized = self.tokenizer.tokenize(seq_text, max_length=self.max_seq_length)
+        # For huggingface, tokenized is a dict with input_ids, attention_mask, etc.
+        # Add seq_id
+        tokenized["seq_id"] = seq_id
+        return tokenized
+
+def collate_fn(batch, max_length, pad_token_id):
+    """
+    Custom collate function to pad batches dynamically.
+    Assumes batch items are dicts from tokenizer.
+    """
+    input_ids = [item["input_ids"] for item in batch]
+    attention_mask = [item.get("attention_mask", [1] * len(item["input_ids"])) for item in batch]
+    seq_ids = [item["seq_id"] for item in batch]
+
+    max_len = min(max(len(ids) for ids in input_ids), max_length)
+
+    padded_input_ids = torch.full((len(batch), max_len), pad_token_id, dtype=torch.long)
+    padded_attention_mask = torch.zeros((len(batch), max_len), dtype=torch.long)
+
+    for i, (ids, mask) in enumerate(zip(input_ids, attention_mask)):
+        length = min(len(ids), max_len)
+        padded_input_ids[i, :length] = torch.as_tensor(ids[:length])
+        padded_attention_mask[i, :length] = torch.as_tensor(mask[:length])
+
+    return {
+        "seq_tokens": {
+            "input_ids": padded_input_ids,
+            "attention_mask": padded_attention_mask,
+            # Add token_type_ids if needed
+        },
+        "seq_id": seq_ids
+    }
+
+def single_sequence_loader(model_config, run_config, input_file, sequence_type, force_exact_batch_size=False):
+    """
+    Load examples from a .tsv file in the single sequence format: id<tab>text
+    Using PyTorch DataLoader.
+    """
+    if sequence_type == "query":
+        max_length = model_config["max_query_length"]
+        min_length = model_config["min_query_length"]
+        batch_size = run_config["query_batch_size"]
+    else:  # doc
+        max_length = model_config["max_doc_length"]
+        min_length = model_config["min_doc_length"]
+        batch_size = run_config["collection_batch_size"]
+
+    tokenizer, _, _ = _get_indexer(model_config)  # Reuse your _get_indexer, but we only need tokenizer
+
+    dataset = IdSequenceDataset(input_file, tokenizer=tokenizer, max_seq_length=max_length, min_seq_length=min_length, sequence_type=sequence_type)
+
+    # For huggingface tokenizer, get pad_token_id
+    if isinstance(tokenizer, FastTransformerTokenizer):
+        hf_tokenizer = AutoTokenizer.from_pretrained(model_config["bert_pretrained_model"])
+        pad_token_id = hf_tokenizer.pad_token_id
+    else:
+        pad_token_id = 0  # Default, adjust if needed
+
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,  # Assuming inference, no shuffle
+        num_workers=run_config["dataloader_num_workers"],
+        collate_fn=lambda b: collate_fn(b, max_length, pad_token_id),
+        pin_memory=True
+    )
+    return loader
+
 if __name__ == "__main__":
 
-    #
-    # config & mode selection
-    # -------------------------------
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('mode', help='One of: '+MODE_ALL+', '+MODE_START_INDEX+', '+MODE_START_SEARCH)
-    parser.add_argument('--run-name', action='store', dest='run_name',
-                        help='run name, used for the run folder (no spaces, special characters)', required=True)
-    parser.add_argument('--config', nargs='+', action='store', dest='config_file',
-                        help='config file with all hyper-params & paths', required=True)
-    parser.add_argument('--config-overwrites', action='store', dest='config_overwrites',
-                        help='overwrite config values format; (non-)whitespace important! -> key1: value1,key2: value2', required=False)
-    args = parser.parse_args()
+    config={
+                "expirement_base_path": "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment",
+                "trained_model": "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment",
+                "collection_tsv": "/workspace/2404170001/inputs/collection.tsv",
+                "collection_batch_size": 256,
+                "query_batch_size": 32,
+                "onnx_use_inference": False,
+                "dataloader_num_workers": 0,
+                "query_sets": {
+                    "msmarco-dev": {
+                    "queries_tsv": "/workspace/2404170001/validation_test_split/queries_test.tsv",
+                    "qrels": "/workspace/2404170001/validation_test_split/qrels_test.tsv",
+                    "binarization_point": 1,
+                    "top_n": 1000
+                    }
+                },
+                "token_block_size": 1000000,
+                "token_dim": 128,
+                "token_dtype": "float16",
+                "faiss_index_type": "hnsw",
+                "faiss_use_gpu": False,
+                "faiss_hnsw_graph_neighbors": 128,
+                "faiss_hnsw_efConstruction": 128,
+                "faiss_hnsw_efSearch": 128,
+                "faiss_ivf_search_probe_count": 500,
+                "faiss_ivf_list_count": 20000
+                }
+    run_folder = r'/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment'
+    mode = "encode+index+search"
 
-    config = get_config(args.config_file, args.config_overwrites)
-    run_folder = prepare_experiment(args, config)
-
-    if args.mode == MODE_ALL:
+    if mode == MODE_ALL:
         encode_config = config
         index_config = config
         model_config = get_config_single(config["trained_model"])
         print_hello({**model_config, **config}, run_folder, "[Dense Retrieval] Encode & Index & Search",
                     show_settings=["Model","Trained Checkpoint","Index","Collection Batch Size","Query Batch Size","Use ONNX Runtime"])
 
-    elif args.mode == MODE_START_INDEX:
+    elif mode == MODE_START_INDEX:
         if "continue_folder" not in config: raise Exception("continue_folder must be set in config")
 
         encode_folder = config["continue_folder"]
@@ -90,7 +230,7 @@ if __name__ == "__main__":
         print_hello({**model_config, **config,**{"trained_model":encode_config["trained_model"]}}, run_folder, "[Dense Retrieval] Index & Search",
                     show_settings=["Model","Trained Checkpoint","Index","Query Batch Size","Use ONNX Runtime"])
 
-    elif args.mode == MODE_START_SEARCH:
+    elif mode == MODE_START_SEARCH:
         if "continue_folder" not in config: raise Exception("continue_folder must be set in config")
         
         index_folder = config["continue_folder"]
@@ -128,7 +268,7 @@ if __name__ == "__main__":
     
     word_embedder, padding_idx = get_word_embedder(model_config)
     model, encoder_type = get_model(model_config,word_embedder,padding_idx)
-    model = build_model(model,encoder_type,word_embedder,model_config)
+    # model = build_model(model,encoder_type,word_embedder,model_config)
     
     if model_config.get("model_checkpoint_from_huggingface",False):
         model.from_pretrained(encode_config["trained_model"])
@@ -144,7 +284,7 @@ if __name__ == "__main__":
     #
     # setup heads wrapping the model for indexing & searching
     #
-    if args.mode == MODE_ALL:
+    if mode == MODE_ALL:
         model_indexer = CollectionIndexerHead(model, use_fp16=False if use_onnx else model_config["use_fp16"]).cuda()
         model_indexer.eval()
 
@@ -171,7 +311,7 @@ if __name__ == "__main__":
     #
     if torch.cuda.device_count() > 1 and not use_onnx:
         console.log("Let's use", torch.cuda.device_count(), "GPUs!")
-        if args.mode == MODE_ALL:
+        if mode == MODE_ALL:
             model_indexer = torch.nn.DataParallel(model_indexer)
             model_indexer.eval()
         if config["query_batch_size"] > 1:
@@ -184,7 +324,12 @@ if __name__ == "__main__":
 
     perf_monitor.set_gpu_info(torch.cuda.device_count(),torch.cuda.get_device_name())
     perf_monitor.stop_block("startup")
-    
+
+
+    def _get_indexer(model):
+        _tokenizer = FastTransformerTokenizer(model["bert_pretrained_model"])
+        return _tokenizer, None, None
+
     try:
 
         #
@@ -194,7 +339,7 @@ if __name__ == "__main__":
         token_base_size = config["token_block_size"]
         token_dimensions = config["token_dim"]
 
-        if args.mode == MODE_ALL:
+        if mode == MODE_ALL:
 
             console.log("[Encoding]","Encoding collection from: ",config["collection_tsv"])
 
@@ -211,7 +356,7 @@ if __name__ == "__main__":
             storage = []
             storage_filled_to_index = []
 
-            input_loader = allennlp_single_sequence_loader(model_config,config, config["collection_tsv"], sequence_type="doc")
+            input_loader = single_sequence_loader(model_config, config, config["collection_tsv"], sequence_type="doc")
             perf_monitor.start_block("encode")
             start_time = default_timer()
             #import pprofile
@@ -276,7 +421,7 @@ if __name__ == "__main__":
             id_mapping.append(current_ids[:token_insert_index])
             storage_filled_to_index.append(token_insert_index)
 
-            saveCompressed(os.path.join(run_folder,"doc_infos.npz"),doc_infos=doc_infos,id_mapping=id_mapping,
+            saveCompressed(os.path.join(run_folder,"doc_infos.npz"),doc_infos=doc_infos,id_mapping=numpy.array(id_mapping, dtype=object),
                                                                     seq_ids=seq_ids,storage_filled_to_index=storage_filled_to_index)
             if not use_onnx:
                 perf_monitor.log_unique_value("encoding_gpu_mem",str(torch.cuda.memory_allocated()/float(1e9)) + " GB")
@@ -320,7 +465,7 @@ if __name__ == "__main__":
             raise Exception("faiss_index_type not supported")
         
         # we don't save the full index, but rebuilt it every time (just loading the vectors basically)
-        if args.mode != MODE_START_SEARCH or index_config["faiss_index_type"] == "full":
+        if mode != MODE_START_SEARCH or index_config["faiss_index_type"] == "full":
 
             perf_monitor.start_block("indexing")
 
@@ -354,7 +499,7 @@ if __name__ == "__main__":
         # 3) Search
         # -------------------------
         if use_onnx:
-            if args.mode == MODE_ALL: del onnx_indexer
+            if mode == MODE_ALL: del onnx_indexer
             onnx_searcher = onnxruntime.InferenceSession(os.path.join(run_folder,"searcher-model.onnx"),providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 
         perf_monitor.start_block("search_total")
@@ -362,7 +507,7 @@ if __name__ == "__main__":
         for test_name,test_config in config["query_sets"].items():
             console.log("[Search]","Start retrieval for:", test_config["queries_tsv"])
             
-            input_loader = allennlp_single_sequence_loader(model_config,config,test_config["queries_tsv"], sequence_type="query", force_exact_batch_size=True)
+            input_loader = single_sequence_loader(model_config,config,test_config["queries_tsv"], sequence_type="query", force_exact_batch_size=True)
             
             validation_results = defaultdict(list)
             times_query_encode = []

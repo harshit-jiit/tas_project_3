@@ -194,13 +194,12 @@ def read_best_info(path):
 
 import zipfile
 def saveCompressed(fh, **namedict):
-    with zipfile.ZipFile(fh, mode="w", compression=zipfile.ZIP_STORED,
+    with zipfile.ZipFile(fh, 'w', zipfile.ZIP_STORED,
                          allowZip64=True) as zf:
         for k, v in namedict.items():
             with zf.open(k + '.npy', 'w', force_zip64=True) as buf:
-                numpy.lib.npyio.format.write_array(buf,
-                                                   numpy.asanyarray(v),
-                                                   allow_pickle=True)
+                numpy.save(buf, v, allow_pickle=True)
+#
 
 
 #

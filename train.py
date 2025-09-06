@@ -56,7 +56,7 @@ from matchmaker.distillation.dynamic_teacher import DynamicTeacher
 from matchmaker.utils.running_average import RunningAverage
 
 from matchmaker.models.all import get_model, get_word_embedder
-from matchmaker.losses.all import get_loss
+from matchmaker.losses.all import get_loss, merge_loss
 
 from matchmaker.utils.cross_experiment_cache import *
 # from matchmaker.utils.input_pipeline import *
@@ -185,7 +185,7 @@ if __name__ == "__main__":
     # Define configuration parameters directly in the main thread
     train_config = {
         'run_name': 'neural_ir_experiment',  # Set your experiment name here
-        'continue_folder': None,  # Set to folder path if continuing an experiment
+        'continue_folder': "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment",  # Set to folder path if continuing an experiment
         'config_file': ['config/train.yaml'],  # Path to your config file(s) - not used anymore
         'config_overwrites': None,  # Optional config overwrites in format "key1: valueA,key2: valueB"
         'run_folder': None  # Optional specific run folder
@@ -193,6 +193,7 @@ if __name__ == "__main__":
 
     # Main model configuration dictionary (replaces YAML config)
     model_config={
+        "warmstart_model_path": "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment/best-model.pytorch-state-dict",
         "bert_trainable": True,
         "bert_dot_compress_dim": 128,
         "expirement_base_path":os.path.join(base_path,"experiments",train_config["run_name"]),
@@ -219,7 +220,8 @@ if __name__ == "__main__":
                 # "candidate_set_path": None, #os.path.join(base_path,"validation_test_split/bm25_validation.txt"),
                 "candidate_set_from_to": None, #[100, 100],
                 "binarization_point": 1,
-                "save_only_best": True
+                "save_only_best": True,
+                "save_secondary_output":False
             }
         },
         "test":{
@@ -231,7 +233,9 @@ if __name__ == "__main__":
                 
                 "candidate_set_from_to":None, #[100, 100],
                 "binarization_point": 1,
-                "save_only_best": True
+                "save_only_best": True,
+                "save_secondary_output":False
+
             }
         },
         "train_embedding": True,
@@ -1030,7 +1034,9 @@ if __name__ == "__main__":
         torch.cuda.synchronize()
         time.sleep(10) # just in case the gpu has not cleaned up the memory
         torch.cuda.reset_peak_memory_stats()
+        print("Loading state dict ...")
         model_cpu.load_state_dict(torch.load(best_model_store_path,map_location="cpu"),strict=False)
+        print("State dict loaded ! memory allocation:",torch.cuda.memory_allocated())
         model = model_cpu.cuda(cuda_device)
         if is_distributed:
             model = nn.DataParallel(model)

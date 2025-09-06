@@ -10,15 +10,15 @@ from matchmaker.losses.msmargin import *
 # from matchmaker.losses.teacher_mse_ranknet import *
 # from matchmaker.losses.QA_StartEndCrossEntropy import *
 
-# def merge_loss(losses, log_vars):
-#     loss = torch.zeros(1,device=log_vars.device)
-#     weighted_losses = []
-#     for l in range(len(losses)):
-#         precision = torch.exp(-log_vars[l])
-#         wl = torch.sum(precision * losses[l] + log_vars[l], -1)
-#         loss += wl
-#         weighted_losses.append(wl.detach())
-#     return torch.mean(loss),weighted_losses
+def merge_loss(losses, log_vars):
+    loss = torch.zeros(1,device=log_vars.device)
+    weighted_losses = []
+    for l in range(len(losses)):
+        precision = torch.exp(-log_vars[l])
+        wl = torch.sum(precision * losses[l] + log_vars[l], -1)
+        loss += wl
+        weighted_losses.append(wl.detach())
+    return torch.mean(loss),weighted_losses
 
 def get_loss(config):
 
