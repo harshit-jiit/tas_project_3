@@ -1,0 +1,83 @@
+nvidia-docker run -it --gpus device=6 --rm --name jiit_204170001 -v /home/jiit_2404170001/Downloads/job1/gpu-dev-container/:/workspace/2404170001 -v $(pwd)/workspace:/workspace/project -p 2028:8888 2404170001-gpu-dev
+
+nvidia-docker run -it --gpus device=6 --rm --name jiit_204170001_2 \
+  -v /home/jiit_2404170001/Downloads/job1/gpu-dev-container/:/workspace/2404170001 \
+  -v $(pwd)/workspace:/workspace/project \
+  -p 2028:8888 \
+  2404170001-gpu-dev_2
+
+docker exec -it jiit_204170001 bash
+
+ssh -L 8889:localhost:2027 jiit_2404170001@jiit-gpu01
+
+watch -n0.5 nvidia-smi
+
+nvidia-smi
+
+docker images
+
+docker ps -a
+
+docker build -t 2404170001-gpu-dev_2 .
+
+nvidia-docker run -it --gpus device=7 --rm --name jiit_204170001_matchmaker -v /home/jiit_2404170001/Downloads/job1/gpu-dev-container/:/workspace/2404170001 -v $(pwd)/workspace:/workspace/project -p 2026:8884 2404170001-gpu-matchmaker
+
+
+python matchmaker/distillation/query_clusterer.py --run-name msmarco_query_clusters --config-file config/train/defaults.yaml config/train/cluster_model_msmarco.yaml
+
+jupyter notebook --port=8888 --ip=0.0.0.0 --no-browser --NotebookApp.token='' --NotebookApp.password='' &
+
+python -m ipykernel install --user --name=tas --display-name="TAS Environment"
+
+# Core dependencies for TAS-Balanced dense retrieval training
+pip install torch torchvision torchaudio transformers numpy scikit-learn pandas tqdm rich pyyaml jupyter ipykernel tensorboard huggingface_hub requests
+
+# For GPU-accelerated vector search (choose one)
+# For GPU systems:
+pip install faiss-gpu
+# For CPU-only systems:
+# pip install faiss-cpu
+
+# For BM25 baseline and IR evaluation
+pip install pyserini
+
+# Optional utilities
+pip install reportlab
+
+# Java requirement for Pyserini (if not already installed)
+# conda install -c conda-forge openjdk=21
+
+#pip install pandas
+
+!pip install blingfire
+
+jiit_2404170001@jiit-gpu01 ~]$ docker cp jiit_204170001:/opt/miniconda/envs/tas /home/jiit_2404170001/Downloads/job1/gpu-dev-contain
+er/tas
+
+conda install pytorch::faiss-gpu
+
+
+# Stop current container
+docker stop jiit_204170001
+
+# Restart with larger shared memory (8GB)
+nvidia-docker run -it --gpus device=6 --rm --name jiit_204170001 --shm-size=16g -v /home/jiit_2404170001/Downloads/job1/gpu-dev-container/:/workspace/2404170001 -v $(pwd)/workspace:/workspace/project -p 2028:8888 2404170001-gpu-dev
+
+  (/workspace/2404170001/tas) root@18d9b8b703f7:/workspace/2404170001/tas_project_3# rm -f /dev/shm/torch_*
+(/workspace/2404170001/tas) root@18d9b8b703f7:/workspace/2404170001/tas_project_3# rm -f /dev/shm/sem.*
+(/workspace/2404170001/tas) root@18d9b8b703f7:/workspace/2404170001/tas_project_3# df -h /dev/shm
+
+nvidia-docker run -it --gpus device=6 --rm --name jiit_204170001 \
+  --shm-size=32g \
+  --memory=64g \
+  --ulimit memlock=-1 \
+  --ulimit stack=67108864 \
+  --oom-kill-disable \
+  -v /home/jiit_2404170001/Downloads/job1/gpu-dev-container/:/workspace/2404170001 \
+  -v $(pwd)/workspace:/workspace/project \
+  -p 2028:8888 \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  -e CUDA_VISIBLE_DEVICES=6 \
+  2404170001-gpu-dev
+
+  pip install faiss-gpu-cu12

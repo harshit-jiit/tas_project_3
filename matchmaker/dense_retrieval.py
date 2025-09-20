@@ -184,12 +184,14 @@ if __name__ == "__main__":
 
 
     config={
+                "continue_folder": "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment",
                 "expirement_base_path": "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment",
                 "trained_model": "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment",
                 "collection_tsv": "/workspace/2404170001/inputs/collection.tsv",
                 "collection_batch_size": 256,
                 "query_batch_size": 32,
                 "onnx_use_inference": False,
+                "use_fp16": False,
                 "dataloader_num_workers": 0,
                 "query_sets": {
                     "msmarco-dev": {
@@ -201,9 +203,9 @@ if __name__ == "__main__":
                 },
                 "token_block_size": 1000000,
                 "token_dim": 128,
-                "token_dtype": "float16",
-                "faiss_index_type": "hnsw",
-                "faiss_use_gpu": False,
+                "token_dtype": "float32",
+                "faiss_index_type": "full",
+                "faiss_use_gpu": True,
                 "faiss_hnsw_graph_neighbors": 128,
                 "faiss_hnsw_efConstruction": 128,
                 "faiss_hnsw_efSearch": 128,
@@ -211,7 +213,8 @@ if __name__ == "__main__":
                 "faiss_ivf_list_count": 20000
                 }
     run_folder = r'/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment'
-    mode = "encode+index+search"
+    # mode = "encode+index+search"
+    mode = "index+search"  # Instead of "encode+index+search"
 
     if mode == MODE_ALL:
         encode_config = config
@@ -224,7 +227,7 @@ if __name__ == "__main__":
         if "continue_folder" not in config: raise Exception("continue_folder must be set in config")
 
         encode_folder = config["continue_folder"]
-        encode_config = get_config_single(encode_folder)
+        encode_config = config
         model_config = get_config_single(encode_config["trained_model"])
         index_config = config
         print_hello({**model_config, **config,**{"trained_model":encode_config["trained_model"]}}, run_folder, "[Dense Retrieval] Index & Search",
@@ -234,7 +237,7 @@ if __name__ == "__main__":
         if "continue_folder" not in config: raise Exception("continue_folder must be set in config")
         
         index_folder = config["continue_folder"]
-        index_config  = get_config_single(index_folder)
+        index_config  = config
         encode_folder = index_config["continue_folder"] if "continue_folder" in index_config else index_folder
         encode_config= get_config_single(encode_folder)
         model_config = get_config_single(encode_config["trained_model"])

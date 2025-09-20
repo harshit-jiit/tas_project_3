@@ -1,0 +1,32 @@
+Based on the paper, they selected the following configuration for clustering, as detailed in Section 4.2 "Parameter Settings":
+
+Clustering Algorithm: k-means
+Input Data: Vector representations from a baseline pairwise-trained BERTDOT model.
+Number of Queries Clustered: 400,000 training queries.
+Number of Clusters (k): 2,000.
+Clusters Sampled Per Batch (n): 1.
+
+10 bins
+
+Validation Set: A custom set of 3,200 queries (distinct from the final test sets).
+Evaluation Frequency: The model's performance is checked on this validation set every 4,000 training steps.
+Metric: They monitor the nDCG@10 score.
+
+Stopping Rule: Training is stopped if the nDCG@10 score does not improve for 30 consecutive evaluations (a "patience" of 30). The best-performing model checkpoint is saved.
+
+Model: A 6-layer BERTDOT model (initialized from DistilBERT).
+Batch Size: 32.
+Optimizer: Adam.
+Learning Rate: 7 x 10⁻⁶.
+Loss Function (Dual-Teacher Supervision): This is the key from Equation (8) in the paper. The total loss is a weighted sum of two parts:
+Pairwise Loss (L_Pair): A Margin-MSE loss using a BERTCAT teacher's scores.
+In-Batch Loss (L_InB): A Margin-MSE loss using a ColBERT teacher for the in-batch negatives.
+Combination: Total Loss = L_Pair + (L_InB * 0.75). The 0.75 is a hyperparameter (alpha) to balance the two loss signals.
+
+
+
+Based on the research paper, the main dense retrieval model used is BERTDOT.
+
+According to the code in all.py, when the model is set to bert_dot, the token_embedder_type should also be set to "bert_dot".
+
+This configuration ensures that the BERT_Dot model class handles the tokenization and encoding internally using its own DistilBERT encoder, as described in the paper.
