@@ -185,15 +185,16 @@ if __name__ == "__main__":
     # Define configuration parameters directly in the main thread
     train_config = {
         'run_name': 'neural_ir_experiment',  # Set your experiment name here
-        'continue_folder': "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment",  # Set to folder path if continuing an experiment
+        'continue_folder': "/workspace/2404170001/experiments/neural_ir_experiment/distil_bert_experiment",  # Set to folder path if continuing an experiment
+        # 'continue_folder': None,
         'config_file': ['config/train.yaml'],  # Path to your config file(s) - not used anymore
         'config_overwrites': None,  # Optional config overwrites in format "key1: valueA,key2: valueB"
         'run_folder': None  # Optional specific run folder
     }
-
+    beir_base_path="/workspace/2404170001/beir_dataset"
     # Main model configuration dictionary (replaces YAML config)
     model_config={
-        "warmstart_model_path": "/workspace/2404170001/experiments/neural_ir_experiment/2025-09-02_2011_neural_ir_experiment/best-model.pytorch-state-dict",
+        "warmstart_model_path": "/workspace/2404170001/experiments/neural_ir_experiment/distil_bert_experiment/best-model.pytorch-state-dict",
         "bert_trainable": True,
         "bert_dot_compress_dim": 128,
         "expirement_base_path":os.path.join(base_path,"experiments",train_config["run_name"]),
@@ -225,18 +226,40 @@ if __name__ == "__main__":
             }
         },
         "test":{
-            "msmarco": {
-                "validation_metric": "nDCG@10",
-                "tsv": os.path.join(base_path,"validation_test_split/test.tsv"),
-                "qrels": os.path.join(base_path,"validation_test_split/qrels_test.tsv"),
-                # "candidate_set_path": None, #os.path.join(base_path,"validation_test_split/bm25_test.txt"),
+            # "msmarco": {
+            #     "validation_metric": "nDCG@10",
+            #     "tsv": os.path.join(base_path,"validation_test_split/test.tsv"),
+            #     "qrels": os.path.join(base_path,"validation_test_split/qrels_test.tsv"),
+            #     # "candidate_set_path": None, #os.path.join(base_path,"validation_test_split/bm25_test.txt"),
                 
-                "candidate_set_from_to":None, #[100, 100],
-                "binarization_point": 1,
-                "save_only_best": True,
-                "save_secondary_output":False
+            #     "candidate_set_from_to":None, #[100, 100],
+            #     "binarization_point": 1,
+            #     "save_only_best": True,
+            #     "save_secondary_output":False
 
-            }
+            # },
+        "scifact_test": {
+            "validation_metric": "nDCG@10", 
+            "tsv": "/workspace/2404170001/beir_evaluation/scifact/test_files/test_evaluation.tsv",
+            "qrels": "/workspace/2404170001/beir_evaluation/scifact/test_files/qrels_test.tsv",
+            "binarization_point": 1,
+            # "candidate_set_path": "/workspace/2404170001/beir_evaluation/scifact/test_files/bm25_test.txt",
+            "candidate_set_from_to": None, #[5, 1000],
+            "save_secondary_output": False,
+            "save_only_best": True,
+
+        },
+        "trec_covid_test":{
+            "validation_metric": "nDCG@10", 
+            "tsv": "/workspace/2404170001/beir_evaluation/trec-covid/test_files/test_evaluation.tsv",
+            "qrels": "/workspace/2404170001/beir_evaluation/trec-covid/test_files/qrels_test.tsv",
+            "binarization_point": 2,
+            # "candidate_set_path": "/workspace/2404170001/beir_evaluation/trec-covid/test_files/bm25_test.txt",
+            "candidate_set_from_to": None, #[5, 100]
+            "save_secondary_output": False,
+            "save_only_best": True,
+            # "top_n": 100
+        }
         },
         "train_embedding": True,
         "use_fp16": True,
